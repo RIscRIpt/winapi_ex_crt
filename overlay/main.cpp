@@ -1,13 +1,18 @@
 #include <Windows.h>
 #include <map>
 
+#include <pointer.h>
+
 using namespace std;
+using namespace mmgr;
 
-map<HWND, WNDPROC> oWndProcMap;
+typedef BOOL(WINAPI *tEndPaint)(HWND, const PAINTSTRUCT*);
 
-void inverse_paint(HWND hWnd) {
-    PAINTSTRUCT ps;
-    BeginPaint(hWnd, &ps);
+tEndPaint oEndPaint;
+tEndPaint *pEndPaint;
+
+BOOL WINAPI hEndPaint(HWND hWnd, const PAINTSTRUCT *lpPaint) {
+    const PAINTSTRUCT &ps = *lpPaint;
     BitBlt(
         ps.hdc,
         ps.rcPaint.left,
@@ -19,49 +24,21 @@ void inverse_paint(HWND hWnd) {
         ps.rcPaint.top,
         NOTSRCCOPY
     );
-    EndPaint(hWnd, &ps);
-}
-
-LRESULT CALLBACK hWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch(uMsg) {
-    case WM_PAINT:
-        inverse_paint(hwnd);
-        break;
-    }
-    return CallWindowProc(
-        oWndProcMap[hwnd],
-        hwnd, uMsg, wParam, lParam
-    );
-    //oWndProcMap[hwnd](hwnd, uMsg, wParam, lParam);
-}
-
-void hook_wndproc(HWND hWnd) {
-    auto oWndProc =
-        (WNDPROC)SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)hWndProc);
-    oWndProcMap[hWnd] = oWndProc;
-    SetWindowPos(
-        hWnd,
-        NULL,
-        0, 0, 0, 0,
-        SWP_ASYNCWINDOWPOS |
-        SWP_NOCOPYBITS |
-        SWP_NOMOVE |
-        SWP_NOSIZE |
-        SWP_NOZORDER
-    );
-}
-
-BOOL CALLBACK EnumFunc(HWND hWnd, LPARAM curPid) {
-    DWORD wndPid = 0;
-    GetWindowThreadProcessId(hWnd, &wndPid);
-    if(wndPid == curPid) {
-        hook_wndproc(hWnd);
-    }
-    return TRUE; // continue enumeration
+    return oEndPaint(hWnd, lpPaint);
 }
 
 DWORD WINAPI init(LPVOID param) {
-    EnumWindows(EnumFunc, GetCurrentProcessId());
+    DWORD old_prot;
+
+    pointer p = EndPaint;
+    p += 2;
+    p = *p;
+
+    pEndPaint = p;
+    p.protect(sizeof(tEndPaint), PAGE_READWRITE, &old_prot);
+    oEndPaint = *pEndPaint;
+    *pEndPaint = hEndPaint;
+    p.protect(sizeof(tEndPaint), old_prot);
     return 0;
 }
 
