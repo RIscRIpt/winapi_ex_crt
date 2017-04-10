@@ -32,6 +32,7 @@ LRESULT CALLBACK hWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         oWndProcMap[hwnd],
         hwnd, uMsg, wParam, lParam
     );
+    //oWndProcMap[hwnd](hwnd, uMsg, wParam, lParam);
 }
 
 void hook_wndproc(HWND hWnd) {
